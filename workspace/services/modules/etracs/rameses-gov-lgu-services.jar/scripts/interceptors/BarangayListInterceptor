@@ -29,10 +29,11 @@ public class BarangayListInterceptor {
 	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'barangay' }")
 	public void loadList(def evt) {
 		def o = evt.args[0];
-		if(o.node.id == 'all') return;
+		def nodeid = o?.node?.id; 
+		if ( !nodeid || nodeid == 'all' ) return;
 
 		def str = " parent.objid = :parentid ";
-		def m = [parentid: o.node.id ];
+		def m = [parentid: nodeid ];
 
 		//add to first position of where
 		if( o.where ) {

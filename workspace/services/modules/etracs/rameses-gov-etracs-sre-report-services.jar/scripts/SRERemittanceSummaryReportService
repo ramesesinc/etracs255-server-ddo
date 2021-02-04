@@ -63,6 +63,8 @@ class SRERemittanceSummaryReportService  {
 			if ( z.voided == 1 ) z.paidby = "*** VOID ***";
 		}
 
+		def total = items.sum{( it.amount ? it.amount : 0.0 )} 
+		rem.amount = ( total ? total : 0.0 ); 
 
 		def hdr = [:]; 
 		hdr.REPORTTITLE = 'SUMMARY OF CASH COLLECTIONS AND DEPOSITS BY SRE'  

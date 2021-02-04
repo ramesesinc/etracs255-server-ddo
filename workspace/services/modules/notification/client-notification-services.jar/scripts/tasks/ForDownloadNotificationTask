@@ -63,7 +63,17 @@ class ForDownloadNotificationTask {
 
 		list.each{ o-> 
 			def old = em.findData([ objid: o.objid ]); 
-			if ( !old ) em.create( o, 'data' ); 
+			if ( !old ) {
+				try {
+					em.create( o, 'data' ); 
+				} catch (e) {
+					//ignore duplicate
+					println '=============================================>>'
+					if (!e.message.toString().toLowerCase().matches('.*duplicate.*')) {
+						throw e;
+					}
+				}
+			}
 		} 
 
 		em.update([ objid: inc.objid, indexno:inc.endindexno+1 ], 'fordownload'); 		

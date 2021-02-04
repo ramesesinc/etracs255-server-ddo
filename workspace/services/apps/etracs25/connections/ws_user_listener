@@ -1,4 +1,4 @@
 provider=websocket
 ws.host=localhost:${@@websocket61:port}
 ws.protocol=user
-ws.enabled=${notification_ws.enabled}
+ws.enabled=true

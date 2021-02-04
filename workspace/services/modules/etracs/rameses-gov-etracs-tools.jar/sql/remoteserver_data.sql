@@ -11,13 +11,18 @@ select * from sys_orgclass where name = $P{name}
 select * from collectiontype_org where org_objid = $P{orgid} 
 
 [getCollectionTypes]
-select distinct ct.*, 
-  o.org_objid as orgid, 
-  o.org_name as orgname, 
-  o.org_type as orgtype 
-from collectiontype_org o 
-  inner join collectiontype ct on ct.objid = o.collectiontypeid 
-where o.org_objid = $P{orgid} 
+select ct.*, tmp1.orgid, tmp1.orgname, tmp1.orgtype 
+from ( 
+  select distinct 
+    o.collectiontypeid, 
+    o.org_objid as orgid, 
+    o.org_name as orgname, 
+    o.org_type as orgtype 
+  from collectiontype_org o 
+    inner join collectiontype ct on ct.objid = o.collectiontypeid 
+  where o.org_objid = $P{orgid} 
+)tmp1, collectiontype ct 
+where ct.objid = tmp1.collectiontypeid 
 order by ct.formno, ct.name 
 
 [getCollectionTypeAccounts]

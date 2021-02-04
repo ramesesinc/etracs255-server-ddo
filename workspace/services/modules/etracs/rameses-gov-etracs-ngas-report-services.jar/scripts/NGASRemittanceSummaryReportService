@@ -62,6 +62,9 @@ class NGASRemittanceSummaryReportService {
 			if ( z.voided == 1 ) z.paidby = "*** VOID ***";
 		}
 
+		def total = items.sum{( it.amount ? it.amount : 0.0 )} 
+		rem.amount = (total ? total : 0.0); 
+
 		def acctgroup = acctgroup_db.find([ objid: p.maingroupid ]).first();
 		def reporttype = (acctgroup?.reporttype ? acctgroup.reporttype : 'NGAS').toUpperCase(); 
 
