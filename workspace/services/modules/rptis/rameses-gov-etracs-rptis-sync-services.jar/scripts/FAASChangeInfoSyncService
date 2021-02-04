@@ -4,45 +4,83 @@ import com.rameses.services.extended.*
 
 class FAASChangeInfoSyncService
 {
-	@Env
-	def env 
-
-	@Service('DateService')
-    def dtSvc
-
 	@Service('RPTMainSyncService')
 	def syncSvc 
 
     @Service('RPTSyncService')
     def rptSync
 
-    @Service('RPTSyncSupport')
-    def support
-
     @Service('FAASChangeInfoService')
     def svc
 
+    @Service('RPTRedFlagService')
+    def redFlagSvc
 
+    @DataContext('rpt_requirement')
+    def em_requirement
+
+
+	def getActions(){
+		return  [
+	    	'CHANGEINFO-FAAS-POST': [send: getChangeInfo, receive: postChangeInfo, schedule: schedulePostChangeInfo],
+	    ]
+	}
 
 	/*---------------------------------------------------------
 	*
 	* SCHEDULING SYNC SUPPORT 
 	*
 	---------------------------------------------------------*/
-
 	@ProxyMethod
-	public void schedulePostChangeInfo(changeinfo){
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def changeinfo = svc.open([objid: data.objid])
 		svc.checkAndUpdateLgu(changeinfo)
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(changeinfo)
-        def idx = 1
-        syncSvc.schedule(changeinfo.objid, changeinfo.objid, 'faaschangeinfo', 'FAAS-CHANGEINFO-POST', dtfiled, idx, remoteOrg)
-        scheduleSharedData(changeinfo, dtfiled, remoteOrg, idx)
+		data.remote = rptSync.getRemoteOrg(changeinfo)
+        def syncdata = syncSvc.create(data)
+		action.schedule(syncdata, changeinfo)
 	}
 
-	void scheduleSharedData(changeinfo, dtfiled, remoteOrg, idx) {
-    	rptSync.scheduleImages(changeinfo.objid, 'faaschangeinfo', dtfiled, remoteOrg, idx)
-    	rptSync.scheduleImages(changeinfo.refid, 'faaschangeinfo', dtfiled, remoteOrg, idx)
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+	def schedulePostChangeInfo = {syncdata, changeinfo ->
+		createSyncItem(changeinfo, syncdata, 'CHANGEINFO-FAAS-POST')
+		scheduleSharedData(syncdata, changeinfo)
+	}
+
+	void scheduleSharedData(syncdata, changeinfo) {
+		def imageactions = [
+			'add_faas_requirement_document',
+			'change_faas_sketch'
+		]
+		if (imageactions.find{it.matches(changeinfo.action) }) {
+			rptSync.scheduleImagesByRefId(syncdata, changeinfo.objid)
+			rptSync.scheduleImagesByRefId(syncdata, changeinfo.refid)
+
+			if ('add_faas_requirement_document'.matches(changeinfo.action) && changeinfo.redflagid) {
+				def redflag = redFlagSvc.open([objid: changeinfo.redflagid])
+				if (redflag && redflag.info?.requirementtype?.objid ) {
+					def req = em_requirement.select('objid')
+									.find([refid: changeinfo.refid, requirementtypeid:redflag.info?.requirementtype?.objid])
+									.first()
+					rptSync.scheduleImagesByRefId(syncdata, req.objid)
+				}
+			}
+		}
     }	
 
 	
@@ -61,19 +99,19 @@ class FAASChangeInfoSyncService
 		rptSync.receive(syncdata, getActions())
 	}
 
-	def getActions(){
-		return  [
-	    	'FAAS-CHANGEINFO-POST': [send: getChangeInfo, receive: postChangeInfo],
-	    ]
-	}
 
 	/*---------------------------------------------------------
 	*
 	* SUPPORT METHODS
 	*
 	---------------------------------------------------------*/
-	def getChangeInfo = {changeinfo ->
-		return svc.open(changeinfo)
+	def getChangeInfo = {syncdata ->
+		def changeinfo = svc.open([objid: syncdata.refid])
+		if (changeinfo.redflagid) {
+			def redflag = redFlagSvc.open([objid: changeinfo.redflagid])
+			changeinfo = svc.openByRedFlag(redflag)
+		}
+		return changeinfo
 	}
 
 	def postChangeInfo = {syncdata ->

@@ -24,6 +24,13 @@ class RPTReportExaminationService
 		params.userid = (params.user ? params.user.objid : '%')
 		params.period = util.buildPeriod(params)
 		util.buildStartEndDateFilter(params)
+
+		params.lguid = (params.lgu ? params.lgu.objid : '%')
+		params.brgyfilter = ''
+		if (params.barangay) {
+			params.brgyid = params.barangay.objid
+			params.brgyfilter = ' AND rp.barangayid = $P{brgyid} '	
+		}
 		
 		def list = em.getExaminationFindings(params)
 		if (!list) throw new Exception('Records not found.')

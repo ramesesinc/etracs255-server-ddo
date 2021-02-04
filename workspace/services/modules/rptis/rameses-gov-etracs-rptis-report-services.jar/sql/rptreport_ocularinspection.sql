@@ -2,7 +2,7 @@
 SELECT 
 	'faas' as doctype,
 	ef.*,
-	f.owner_name, f.titleno, f.fullpin,
+	f.owner_name, f.titleno, f.fullpin, f.tdno, f.administrator_name,
 	rp.cadastrallotno, r.totalareaha,
 	b.name as barangay_name, rp.barangayid, b.parentid as barangay_parentid, rp.purok, rp.street
 FROM examiner_finding ef 
@@ -17,7 +17,7 @@ UNION
 SELECT 
 	'consolidation' as doctype,
 	ef.*,
-	f.owner_name, f.titleno, f.fullpin,
+	f.owner_name, f.titleno, f.fullpin, f.tdno, f.administrator_name,
 	rp.cadastrallotno, r.totalareaha,
 	b.name as barangay_name, rp.barangayid, b.parentid as barangay_parentid, rp.purok, rp.street
 FROM examiner_finding ef 
@@ -33,9 +33,21 @@ UNION
 SELECT 
 	'subdivision' as doctype,
 	ef.*,
-	'' as owner_name, '' as titleno, '' as fullpin,
+	'' as owner_name, '' as titleno, '' as fullpin, '' as tdno, '' as administrator_name,
 	'' as cadastrallotno, 0.0 as totalareaha,
 	'' as barangay_name, '' as barangayid, '' as barangay_parentid, '' as purok, '' as street
 FROM examiner_finding ef 
 	inner join subdivision c on ef.parent_objid = c.objid 
+WHERE ef.objid = $P{objid}
+
+UNION 
+
+SELECT 
+	'batchgr' as doctype,
+	ef.*,
+	'' as owner_name, '' as titleno, '' as fullpin, '' as tdno, '' as administrator_name,
+	'' as cadastrallotno, 0.0 as totalareaha,
+	'' as barangay_name, '' as barangayid, '' as barangay_parentid, '' as purok, '' as street
+FROM examiner_finding ef 
+	inner join batchgr c on ef.parent_objid = c.objid 
 WHERE ef.objid = $P{objid}

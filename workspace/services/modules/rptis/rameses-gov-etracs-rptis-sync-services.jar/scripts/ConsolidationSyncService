@@ -28,6 +28,10 @@ class ConsolidationSyncService
 	@Service('ConsolidationWorkflowService')
 	def workflowSvc
 
+	@Service('FAASSyncService')
+	def faasSyncSvc
+
+
     @DataContext('consolidation')
     def em_consolidation
 
@@ -36,6 +40,17 @@ class ConsolidationSyncService
 
     @DataContext('consolidation_task')
     def em_task
+
+
+	def getActions(){
+		return  [
+	    	'CONSOLIDATION-FORAPPROVAL': [send: getForApproval, receive: postForApproval, schedule: scheduleSubmitToProvince],
+	    	'CONSOLIDATION-REQUIREMENTS': [send: {}, receive: {}, schedule: scheduleRequirements],
+	    	'CONSOLIDATION-FAAS-APPROVED': [send: getApprovedFaas, receive: postApprovedFaas, schedule: {}],
+	    	'CONSOLIDATION-APPROVED': [send: getApprovedConsolidation, receive: postApprovedConsolidation, schedule: scheduleConsolidationApproval],
+	    ]
+	}
+
 	
 
 	/*---------------------------------------------------------
@@ -43,41 +58,77 @@ class ConsolidationSyncService
 	* SCHEDULING SYNC SUPPORT 
 	*
 	---------------------------------------------------------*/
-	
 	@ProxyMethod
-	public void scheduleSubmitToProvince(consolidation){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(consolidation)
-        def idx = 1
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
 
-        //consolidated faas
-        syncSvc.schedule(consolidation.objid, consolidation.newfaasid, 'faas', 'FAAS-DATA', dtfiled, idx++, remoteOrg)
-
-		svc.getAffectedRpus(consolidation.objid).each {
-        	syncSvc.schedule(consolidation.objid, it.newfaasid, 'faas', 'FAAS-DATA', dtfiled, idx++, remoteOrg)
-        }
-
-        //consolidation
-        syncSvc.schedule(consolidation.objid, consolidation.objid, 'consolidation', 'CONSOLIDATION-FORAPPROVAL', dtfiled, idx++, remoteOrg)
-
-        rptSync.scheduleExaminations(consolidation.objid, 'consolidation', dtfiled, remoteOrg, idx)
-    	rptSync.scheduleRequirements(consolidation.objid, 'consolidation', dtfiled, remoteOrg, idx)
+		def consolidation = em_consolidation.find([objid: data.objid]).first()
+		data.remote = rptSync.getRemoteOrg(consolidation)
+        def syncdata = syncSvc.create(data)
+		action.schedule(syncdata, consolidation)
 	}
 
-	@ProxyMethod
-	public void scheduleConsolidationApproval(consolidation){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(consolidation)
-        def idx = 1
+	def createItem(item, syncdata, action, async) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			async: (async == null ? syncdata.async : async),
+			action: (action ? action : syncdata.action),
+			dependedaction: syncdata.dependedaction,
+			info: [:]
+		]
+	}
 
-        syncSvc.schedule(consolidation.objid, consolidation.newfaasid, 'consolidation', 'CONSOLIDATION-FAAS-APPROVED', dtfiled, idx++, remoteOrg)
+	void createSyncItem(entity, syncdata, action) {
+		createSyncItem(entity, syncdata, action, null)
+	}
+
+	void createSyncItem(entity, syncdata, action, async) {
+		def item = createItem(entity, syncdata, action, async)
+        syncSvc.createItem(syncdata, item)
+	}
+
+	
+	def scheduleSubmitToProvince = {syncdata, consolidation ->
+		syncdata.info = syncdata.info ? syncdata.info : [:]
+    	syncdata.info.txntype = 'CS'
+    	
+    	def consolidatedfaas = [objid: consolidation.newfaasid]
+    	faasSyncSvc.scheduleFaasData(syncdata, consolidatedfaas)
 
 		svc.getAffectedRpus(consolidation.objid).each {
-        	syncSvc.schedule(consolidation.objid, it.newfaasid, 'consolidation', 'CONSOLIDATION-FAAS-APPROVED', dtfiled, idx++, remoteOrg)
+			syncdata.async = true
+			faasSyncSvc.scheduleFaasData(syncdata, [objid: it.newfaasid])
         }
 
-        //consolidation
-        syncSvc.schedule(consolidation.objid, consolidation.objid, 'consolidation', 'CONSOLIDATION-APPROVED', dtfiled, idx++, remoteOrg)
+        syncdata.async = false
+        syncdata.dependedaction = 'FAAS-DATA'
+        createSyncItem(consolidation, syncdata, 'CONSOLIDATION-FORAPPROVAL')
+        syncdata.dependedaction = null
+
+        rptSync.scheduleExaminations(syncdata, consolidation.objid)
+    	rptSync.scheduleRequirements(syncdata, consolidation.objid)
+	}
+
+	def scheduleRequirements = {syncdata, consolidation ->
+		rptSync.scheduleRequirements(syncdata, consolidation.objid)
+	}
+
+	def scheduleConsolidationApproval = {syncdata, consolidation ->
+		def faas = [objid: consolidation.newfaasid]
+    	createSyncItem(faas, syncdata, 'CONSOLIDATION-FAAS-APPROVED')
+		
+		svc.getAffectedRpus(consolidation.objid).each {
+			syncdata.async = true
+        	createSyncItem(faas, syncdata, 'CONSOLIDATION-FAAS-APPROVED')
+        }
+
+		syncdata.async = false
+		syncdata.dependedaction = 'CONSOLIDATION-FAAS-APPROVED'
+        createSyncItem(consolidation, syncdata, 'CONSOLIDATION-APPROVED')
+        syncdata.dependedaction = null
 	}
 
 
@@ -95,18 +146,11 @@ class ConsolidationSyncService
 		rptSync.receive(syncdata, getActions())
 	}
 
-	def getActions(){
-		return  [
-	    	'CONSOLIDATION-FORAPPROVAL': [send: getForApproval, receive: postForApproval],
-	    	'CONSOLIDATION-FAAS-APPROVED': [send: getApprovedFaas, receive: postApprovedFaas],
-	    	'CONSOLIDATION-APPROVED': [send: getApprovedConsolidation, receive: postApprovedConsolidation],
-	    ]
-	}
-
 	/*---------------------------------------------------------
 	* SUPPORT METHODS
 	---------------------------------------------------------*/
-	def getForApproval = {consolidation ->
+	def getForApproval = {syncdata ->
+		def consolidation = [objid: syncdata.refid]
 		return consolidationSupport.getForApproval(consolidation)
 	}
 
@@ -116,7 +160,8 @@ class ConsolidationSyncService
 		startWorkflow(syncdata, consolidation)
 	}
 
-	def getApprovedFaas = {faas ->
+	def getApprovedFaas = {syncdata ->
+		def faas = [objid: syncdata.refid]
 		return consolidationSupport.getApprovedFaas(faas)
 	}
 
@@ -126,7 +171,8 @@ class ConsolidationSyncService
 
 	}
 
-	def getApprovedConsolidation = {consolidation ->
+	def getApprovedConsolidation = {syncdata ->
+		def consolidation = [objid: syncdata.refid]
 		return consolidationSupport.getApprovedConsolidation(consolidation)
 	}
 

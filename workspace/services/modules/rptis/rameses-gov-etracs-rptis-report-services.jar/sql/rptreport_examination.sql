@@ -14,8 +14,11 @@ from (
     case when f.tdno is not null then f.tdno else concat('Prev# ', f.prevtdno) end as refno
   from examiner_finding ef
     inner join faas f on ef.parent_objid = f.objid 
+    inner join realproperty rp on f.realpropertyid = rp.objid
   where ef.dtinspected >= $P{startdate} and ef.dtinspected < $P{enddate}
     and ef.inspectedby_objid like $P{userid}
+    AND f.lguid LIKE $P{lguid}
+    ${brgyfilter}
 
   union all 
 
@@ -27,6 +30,7 @@ from (
     inner join subdivision s on ef.parent_objid = s.objid 
   where ef.dtinspected >= $P{startdate} and ef.dtinspected < $P{enddate}
     and ef.inspectedby_objid like $P{userid}
+    AND s.lguid LIKE $P{lguid}
 
   union all 
 
@@ -38,6 +42,7 @@ from (
     inner join consolidation c on ef.parent_objid = c.objid 
   where ef.dtinspected >= $P{startdate} and ef.dtinspected < $P{enddate}
     and ef.inspectedby_objid like $P{userid}
+    AND c.lguid LIKE $P{lguid}
 ) x
 order by x.dtinspected, x.inspectedby_name, x.refno
 

@@ -51,6 +51,7 @@ class ProvinceRPTLedgerService
 		def syncdata = [:]
         syncdata.refid =  ledger.objid 
         syncdata.reftype = 'rptledger'
+        syncdata.refno = ledger.tdno
         syncdata.action = 'SYNCDATA'
         syncdata.remote = mapping.remote 
         syncdata.data = mapping

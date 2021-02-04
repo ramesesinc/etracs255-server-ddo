@@ -12,136 +12,102 @@ class RPTLedgerSyncInterceptor
    @Env
     def env
 
-    @Service('DateService')
-    def dtSvc
-
     @Service('RPTMainSyncService')
-    def syncSvc 
+    def mainSyncSvc 
 
-    @Service('RPTLedgerService')
-    def ledgerSvc
+    @Service('RPTSyncService')
+    def syncSvc
 
     @Service('RPTLedgerSyncService')
-    def  ledgerSyncSvc
+    def  ledgerSync
 
     @DataContext('rptledger')
     def em_rptledger
 
-    @DataContext('rptledger_item')
-    def em_rptledger_item
-
     @DataContext('rptpayment')
     def em_rptpayment
-
-    @DataContext('rptpayment_item')
-    def em_rptpayment_item
 
     @DataContext('remote_mapping')
     def em_remote
 
+
     /*---------------------------------------------------------
     *
-    * POST PAYMENT SUPPORT
+    * SCHEDULING SUPPORT
     *
     ---------------------------------------------------------*/
-
     @After(pattern="RPTReceiptService.create", index=50000) 
     public void schedulePostPayment( evt ) {
         def receipt = evt.result 
-        
-        def data = [:]
-        data.parentid = receipt.objid 
-        data.refid = receipt.objid 
-        data.reftype = 'rptreceipt'
-        data.action = 'POSTPAYMENT'
-        data.dtfiled = dtSvc.serverDate 
-        data.idx = 0
-        syncSvc.create(data)
-    }   
 
-
-    @After(pattern="RPTMainSyncService.asyncSend", eval="#{result.reftype == 'rptreceipt' && 'POSTPAYMENT'.equalsIgnoreCase(result.action)}") 
-    public void sendPostPayment( evt ) {
-        def syncdata = evt.result 
-
-        def payments = em_rptpayment.find([receiptid: syncdata.refid]).list()
-        payments.each{pmt -> 
+        //schedule only paid ledgers with mapping
+        def payments = em_rptpayment.find([receiptid: receipt.objid, voided: 0]).list()
+        payments.each {pmt ->
             def mapping = em_remote.find([objid: pmt.refid, doctype:'rptledger']).first()
-            if (mapping){
-                pmt.rptledger = em_rptledger.find([objid:pmt.refid]).first()
-                pmt.ledgeritems = em_rptledger_item.find([parentid: pmt.refid]).list()
-                pmt.items = em_rptpayment_item.find([parentid: pmt.objid]).list()
-
-                pmt.refid = mapping.remote.objid 
-                pmt.rptledger.objid = mapping.remote.objid 
-                pmt.ledgeritems.each{ it.parentid = mapping.remote.objid }
-
-                //syncdata required fields 
-                syncdata.remote = mapping.remote 
-                syncdata.data = pmt
-                syncSvc.send(syncdata)
+            if (mapping) {
+                def rptledger = em_rptledger.select('objid,tdno,lguid').find([objid: pmt.refid]).first()
+                def data = getDataForSync(rptledger, receipt, 'RPTLEDGER-POST-PAYMENT')
+                data.info.paymentid = pmt.objid
+                mainSyncSvc.createDataForSync(data)
             }
         }
     }   
-
-    @After(pattern="RPTMainSyncService.receive", eval="#{args[0].reftype == 'rptreceipt' && 'POSTPAYMENT'.equalsIgnoreCase(args[0].action)}") 
-    public void postPayment(evt){
-        def payment = evt.args[0].data
-        ledgerSyncSvc.postPayment(payment)
-        evt.result.status = 'OK'
-    }
-
-
-
-    /*---------------------------------------------------------
-    *
-    * VOID PAYMENT SUPPORT
-    *
-    ---------------------------------------------------------*/
 
     @After(pattern="RPTReceiptService.voidReceipt", index=50000) 
     public void scheduleVoidPayment( evt ) {
         def receipt = evt.args[0]
-        
-        def data = [:]
-        data.parentid = receipt.objid
-        data.refid = receipt.objid 
-        data.reftype = 'rptreceipt'
-        data.action = 'VOIDPAYMENT'
-        data.dtfiled = dtSvc.serverDate 
-        data.idx = 0
-        syncSvc.create(data)
-    }   
 
-
-    @After(pattern="RPTMainSyncService.asyncSend", eval="#{result.reftype == 'rptreceipt' && 'VOIDPAYMENT'.equalsIgnoreCase(result.action)}") 
-    public void sendVoidPayment( evt ) {
-        def syncdata = evt.result 
-
-        def voidedpayments = em_rptpayment.find([receiptid: syncdata.refid, voided: 1]).list()
-        voidedpayments.each{pmt -> 
+        //schedule only paid ledgers with mapping
+        def payments = em_rptpayment.find([receiptid: receipt.objid, voided: 1]).list()
+        payments.each {pmt ->
             def mapping = em_remote.find([objid: pmt.refid, doctype:'rptledger']).first()
-            if (mapping){
-                pmt.rptledger = em_rptledger.find([objid:pmt.refid]).first()
-                pmt.ledgeritems = em_rptledger_item.find([parentid: pmt.refid]).list()
-
-                pmt.refid = mapping.remote.objid 
-                pmt.rptledger.objid = mapping.remote.objid 
-                pmt.ledgeritems.each{ it.parentid = mapping.remote.objid }
-
-                //syncdata required fields 
-                syncdata.remote = mapping.remote 
-                syncdata.data = pmt
-                syncSvc.send(syncdata)
+            if (mapping) {
+                def rptledger = em_rptledger.select('objid,tdno,lguid').find([objid: pmt.refid]).first()
+                def data = getDataForSync(rptledger, receipt, 'RPTLEDGER-POST-VOID-PAYMENT')
+                data.info.paymentid = pmt.objid
+                mainSyncSvc.createDataForSync(data)
             }
         }
+    }       
+
+
+    /* schedule */
+    @After(pattern="RPTMainSyncService.scheduleSync", eval="#{result.action.matches('RPTLEDGER-.*')}", index=50000) 
+    public void scheduleForSync( evt ) {
+        def data = evt.result 
+        ledgerSync.schedule(data)
     }   
 
-    @After(pattern="RPTMainSyncService.receive", eval="#{args[0].reftype == 'rptreceipt' && 'VOIDPAYMENT'.equalsIgnoreCase(args[0].action)}") 
-    public void postVoidPayment(evt){
-        def payment = evt.args[0].data
-        ledgerSyncSvc.postVoidPayment(payment)
+
+    /*---------------------------------------------------------
+    *
+    * SEND/RECEIVE HANDLERS
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="RPTMainSyncService.asyncSend", eval="#{result.action.matches('RPTLEDGER-.*')}") 
+    public void sendData( evt ) {
+        def syncdata = evt.result 
+        ledgerSync.send(syncdata)
+    }        
+
+    @After(pattern="RPTMainSyncService.receive", eval="#{args[0].action.matches('RPTLEDGER-.*')}") 
+    public void receiveData(evt){
+        def syncdata = evt.args[0]
+        ledgerSync.receive(syncdata)
         evt.result.status = 'OK'
+    }
+
+
+    def getDataForSync(rptledger, receipt, action) {
+        def data = [:]
+        data.objid = rptledger.objid
+        data.reftype = 'rptledger'
+        data.refno = rptledger.tdno
+        data.orgid = env.ORGID
+        data.remote = syncSvc.getRemoteOrg(rptledger)
+        data.action = action
+        data.info = [receiptno: receipt.receiptno]
+        return data
     }
 }
 

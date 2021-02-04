@@ -26,32 +26,63 @@ class FAASAnnotationSyncService
     def cancelSvc
 
 
+	def getActions(){
+		return  [
+	    	'FAASANNOTATION-POST': [send: getAnnotation, receive: postAnnotation, schedule: scheduleAnnotation],
+	    	'FAASANNOTATION-CANCELLED': [send: getCancelAnnotation, receive: postCancelAnnotation, schedule: scheduleCancelAnnotation],
+	    ]
+	}
 
 	/*---------------------------------------------------------
 	*
 	* SCHEDULING SYNC SUPPORT 
 	*
 	---------------------------------------------------------*/
-
 	@ProxyMethod
-	public void schedulePostAnnotation(annotation){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(annotation)
-        def idx = 1
-        syncSvc.schedule(annotation.objid, annotation.objid, 'faasannotation', 'FAAS-ANNOTATION-POST', dtfiled, idx, remoteOrg)
-        scheduleSharedData(annotation, dtfiled, remoteOrg, idx)
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		action.schedule(data)
 	}
 
-	@ProxyMethod
-	public void scheduleCancelledAnnotation(cancelannotation){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(cancelannotation)
-        def idx = 1
-        syncSvc.schedule(cancelannotation.objid, cancelannotation.objid, 'faasannotation', 'FAAS-ANNOTATION-CANCELLED', dtfiled, idx, remoteOrg)
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
 	}
 
-	void scheduleSharedData(annotation, dtfiled, remoteOrg, idx) {
-    	rptSync.scheduleImages(annotation.objid, 'faasannotation', dtfiled, remoteOrg, idx)
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+
+	def scheduleAnnotation = {data ->
+		def annotation = svc.open([objid: data.objid])
+		annotation.lguid = annotation.faas.lguid
+		data.remote = rptSync.getRemoteOrg(annotation)
+        
+        def syncdata = syncSvc.create(data)
+		createSyncItem(annotation, syncdata, null)
+
+        scheduleSharedData(syncdata, annotation)
+	}
+
+	def scheduleCancelAnnotation = {data ->
+		def cancelannotation = cancelSvc.open([objid: data.objid])
+		cancelannotation.lguid = cancelannotation.annotation.faas.lguid
+		data.remote = rptSync.getRemoteOrg(cancelannotation)
+        
+        def syncdata = syncSvc.create(data)
+		createSyncItem(cancelannotation, syncdata, null)
+	}
+
+	void scheduleSharedData(syncdata, annotation) {
+		rptSync.scheduleImages(syncdata, annotation.objid)
     }	
 
 	
@@ -70,20 +101,13 @@ class FAASAnnotationSyncService
 		rptSync.receive(syncdata, getActions())
 	}
 
-	def getActions(){
-		return  [
-	    	'FAAS-ANNOTATION-POST': [send: getAnnotation, receive: postAnnotation],
-	    	'FAAS-ANNOTATION-CANCELLED': [send: getCancelAnnotation, receive: postCancelAnnotation],
-	    ]
-	}
-
 	/*---------------------------------------------------------
 	*
 	* SUPPORT METHODS
 	*
 	---------------------------------------------------------*/
-	def getAnnotation = {annotation ->
-		return svc.open(annotation)
+	def getAnnotation = {syncdata ->
+		return svc.open([objid: syncdata.refid])
 	}
 
 	def postAnnotation = {syncdata ->
@@ -92,13 +116,14 @@ class FAASAnnotationSyncService
 	}
 
 
-	def getCancelAnnotation = {cancelannotation ->
-		return cancelSvc.open(cancelannotation)
+	def getCancelAnnotation = {syncdata ->
+		return cancelSvc.open([objid: syncdata.refid])
 	}
 
 	def postCancelAnnotation = {syncdata ->
 		def cancelannotation = syncdata.data 
 		cancelSvc.postRemote(cancelannotation)
 	}
+
 }
  

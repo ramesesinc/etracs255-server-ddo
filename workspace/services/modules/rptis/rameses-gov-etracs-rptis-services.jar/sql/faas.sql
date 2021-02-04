@@ -114,7 +114,7 @@ order by r.fullpin
 
 [getPreviousFaases]
 SELECT pf.*, f.rpuid AS prevrpuid
-FROM previousfaas pf
+FROM faas_previous pf
 INNER JOIN faas f ON pf.prevfaasid = f.objid 
 WHERE faasid = $P{faasid}
 
@@ -515,7 +515,7 @@ select count(*) as count from rpt_redflag where refid = $P{objid} and state  = '
 [findPreviousLandRpu]
 select pf.rpuid as objid 
 from faas f 
-	inner join previousfaas p on f.objid = p.faasid
+	inner join faas_previous p on f.objid = p.faasid
 	inner join faas pf on p.prevfaasid = pf.objid 
 where f.objid = $P{objid}
   and pf.state  = 'CANCELLED'
@@ -616,10 +616,10 @@ and rlf.faasid = $P{objid}
 select objid, fullpin from faas where tdno = $P{tdno}
 
 [deletePreviousFaas]
-delete from previousfaas where prevfaasid = $P{objid}
+delete from faas_previous where prevfaasid = $P{objid}
 	
 [findPreviousFaas]
-select * from previousfaas where prevfaasid = $P{objid}
+select * from faas_previous where prevfaasid = $P{objid}
 
 [getAnnotations]	
 select 
@@ -634,7 +634,9 @@ select
 	fa.memoranda,
 	fat.type
 from faas f 
-	inner join faasannotation fa on f.objid = fa.faasid 
+	inner join faasannotation_faas faf on f.objid = faf.faas_objid
+	inner join faasannotation fa on faf.parent_objid = fa.objid 
 	inner join faasannotationtype fat on fa.annotationtype_objid = fat.objid 
-where f.objid = $P{faasid}
+where faf.faas_objid = $P{faasid}
 order by fa.txnno desc 
+

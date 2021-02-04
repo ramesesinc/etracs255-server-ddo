@@ -12,6 +12,7 @@ VALUES
 SELECT 
 	rci.*,
 	rl.objid as rptledgerid, 
+	rl.faasid,
 	rl.tdno,
 	rl.rputype,
 	rl.fullpin ,
@@ -28,6 +29,7 @@ SELECT
 	rl.classcode,
 	pc.name as classification, 
 	rl.titleno,
+	rl.taxable,
 	rp.surveyno,
 	f.effectivityyear
 FROM rptcertificationitem rci 
@@ -81,14 +83,9 @@ SELECT
     SUM(CASE WHEN ri.revtype = 'sef' THEN ri.amount ELSE 0 END) AS sef,
     SUM(CASE WHEN ri.revtype = 'sef' THEN ri.discount ELSE 0 END) AS sefdisc,
     SUM(CASE WHEN ri.revtype = 'sef' THEN ri.interest ELSE 0 END) AS sefint,
-
-    CASE 
-		WHEN MIN(ri.qtr) = MAX(ri.qtr) AND MIN(ri.qtr) <> 0 THEN CONCAT(MIN(ri.qtr), 'Q, ', ri.year)
-		WHEN (MIN(ri.qtr) = 1 AND MAX(ri.qtr) = 4) OR ((MIN(ri.qtr) = 0 AND MAX(ri.qtr) = 0))
-        THEN  CONCAT('', ri.year)
-        ELSE
-            CONCAT(MIN(ri.qtr), 'Q,', ri.year, ' - ', MAX(ri.qtr), 'Q,', ri.year) 
-    END AS period
+    MIN(ri.qtr) as minqtr,
+    MAX(ri.qtr) as maxqtr,
+    ri.year
 FROM rptcertificationitem rci 
     INNER JOIN rptledger rl ON rci.refid = rl.objid 
     INNER JOIN rptpayment rp ON rl.objid = rp.refid
@@ -105,3 +102,25 @@ GROUP BY rl.objid, rp.receiptno, rp.receiptdate, ri.year
 select objid, txnno
 from rptcertification 
 where orno = $P{orno}
+
+
+[getTaxClearancesIssued]
+select 
+	c.objid,
+	c.txnno,
+	c.txndate,
+	c.taxpayer_objid,
+	c.requestedby,
+	c.requestedbyaddress,
+	c.purpose,
+	c.official,
+	c.orno,
+	c.ordate,
+	c.oramount,
+	t.year, 
+	t.qtr 
+from rpttaxclearance t 
+inner join rptcertification c on t.objid = c.objid 
+inner join rptcertificationitem i on c.objid = i.rptcertificationid
+where i.refid = $P{objid}
+

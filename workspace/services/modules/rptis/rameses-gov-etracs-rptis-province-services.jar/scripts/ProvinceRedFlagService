@@ -28,11 +28,12 @@ class ProvinceRedFlagService
 	}
 
 	@ProxyMethod
-	public void resendToMunicipality( entity ) {
+	public def resendToMunicipality( entity ) {
 		entity += redflagSvc.openByCaseNo(entity)
 		if (entity.state == 'RESOLVED')
 			throw new Exception('Red Flag has already been resolved.')
 		notifyMunicipality(entity)
+		return entity
 	}
 
 	void notifyMunicipality(entity){

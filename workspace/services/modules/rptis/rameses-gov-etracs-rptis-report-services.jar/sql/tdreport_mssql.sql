@@ -58,10 +58,14 @@ WHERE f.objid = $P{faasid}
 
 
 [getAnnotationMemoranda]
-SELECT memoranda, memoranda as annotationtext
-FROM faasannotation 
-WHERE faasid = $P{faasid} 
-  AND state = 'APPROVED'
+SELECT 
+	fa.memoranda, 
+	fa.memoranda as annotationtext 
+FROM faasannotation fa
+	INNER JOIN faasannotation_faas faf on fa.objid = faf.parent_objid
+WHERE faf.faas_objid = $P{faasid}
+  AND fa.state = 'APPROVED'
+
 
 
 [getStandardLandAssessment]
@@ -461,6 +465,8 @@ select
 	ctd.name as reason,
 	cf.remarks, 
 	cf.txndate
+	cf.cancelledbytdnos,
+	cf.cancelledbypins
 from cancelledfaas cf 
 	inner join canceltdreason ctd on cf.reason_objid = ctd.objid 
 where cf.faasid = $P{objid}

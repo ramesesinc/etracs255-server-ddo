@@ -26,27 +26,55 @@ class RedFlagSyncService
     def util
 
 
+	def getActions(){
+		return  [
+	    	'RPT-REDFLAG-FOR-MUNICIPALITY': [send: getDataToResolve, receive: postDataToResolve, schedule: scheduleSubmitToMunicipality],
+	    	'RPT-REDFLAG-RESOLVED': [send: getResolvedData, receive: postResolvedData, schedule: scheduleResolvedRedFlag],
+	    ]
+	}
+
 	/*---------------------------------------------------------
 	*
 	* SCHEDULING SYNC SUPPORT 
 	*
 	---------------------------------------------------------*/
-	
 	@ProxyMethod
-	public void scheduleSubmitToMunicipality(redflag){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(redflag)
-        def idx = 1
-        syncSvc.schedule(redflag.objid, redflag.objid, 'redflag', 'REDFLAG-FOR-MUNICIPALITY', dtfiled, idx++, remoteOrg)
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def redflag = svc.open([objid: data.objid])
+		data.remote = rptSync.getRemoteOrg(redflag)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, redflag)
 	}
 
-	@ProxyMethod
-	public void scheduleResolvedRedFlag(redflag){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(redflag)
-        def idx = 1
-        syncSvc.schedule(redflag.objid, redflag.objid, 'redflag', 'REDFLAG-RESOLVED', dtfiled, idx++, remoteOrg)
-        rptSync.scheduleRequirements(redflag.parentid, 'redflag', dtfiled, remoteOrg, idx)
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+	
+	def scheduleSubmitToMunicipality = {syncdata, redflag ->
+		createSyncItem(redflag, syncdata, 'RPT-REDFLAG-FOR-MUNICIPALITY')
+	}
+
+	def scheduleResolvedRedFlag = {syncdata, redflag ->
+        createSyncItem(redflag, syncdata, 'RPT-REDFLAG-RESOLVED')
+        if ('add_faas_requirement_document'.matches(redflag.action)) {
+        	def reqid = redflag.info.requirementtype.objid
+        	rptSync.scheduleRequirements(syncdata, reqid)
+    	}
 	}
 
 	/*---------------------------------------------------------
@@ -62,17 +90,12 @@ class RedFlagSyncService
 		rptSync.receive(syncdata, getActions())
 	}
 
-	def getActions(){
-		return  [
-	    	'REDFLAG-FOR-MUNICIPALITY': [send: getDataToResolve, receive: postDataToResolve],
-	    	'REDFLAG-RESOLVED': [send: getResolvedData, receive: postResolvedData],
-	    ]
-	}
 
 	/*---------------------------------------------------------
 	* SUPPORT METHODS
 	---------------------------------------------------------*/
-	def getDataToResolve = {redflag ->
+	def getDataToResolve = {syncdata ->
+		def redflag = [objid: syncdata.refid]
 		return svc.getDataToResolve(redflag)
 	}
 
@@ -82,7 +105,8 @@ class RedFlagSyncService
 		notifyRecommender(syncdata, redflag)
 	}
 
-	def getResolvedData = {redflag ->
+	def getResolvedData = {syncdata ->
+		def redflag = [objid: syncdata.refid]
 		return svc.getResolvedData(redflag)
 	}
 

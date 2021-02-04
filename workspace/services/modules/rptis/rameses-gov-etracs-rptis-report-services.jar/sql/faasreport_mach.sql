@@ -25,7 +25,8 @@ select
 	md.estimatedlife,
 	md.remaininglife,
 	md.yearinstalled,
-	md.operationyear
+	md.operationyear,
+	md.params
 from machdetail md 	
 	inner join machine m on md.machine_objid = m.objid 
 where md.machrpuid = $P{objid}

@@ -35,40 +35,66 @@ class CancelledFAASSyncService
     def em_task
 	
 
+
+	def getActions(){
+		return  [
+	    	'CANCELLEDFAAS-MANUAL-APPROVED': [send: getData, receive: saveApprovedData, schedule: scheduleManualApproved],
+	    	'CANCELLEDFAAS-FORAPPROVAL': [send: getData, receive: saveDataForApproval, schedule: scheduleSubmitToProvince],
+	    	'CANCELLEDFAAS-ONLINE-APPROVED': [send: getData, receive: postOnlineApproval, schedule: scheduleOnlineApproved],
+	    ]
+	}
+
 	/*---------------------------------------------------------
 	*
 	* SCHEDULING SYNC SUPPORT 
 	*
 	---------------------------------------------------------*/
-	
 	@ProxyMethod
-	public void scheduleManualApproved(cancelledfaas){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(cancelledfaas)
-        def idx = 1
-        syncSvc.schedule(cancelledfaas.objid, cancelledfaas.objid, 'cancelledfaas', 'CANCELLEDFAAS-MANUAL-APPROVED', dtfiled, idx, remoteOrg)
-        scheduleSharedData(cancelledfaas, dtfiled, remoteOrg, idx)
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def cancelledfaas = svc.open([objid: data.objid])
+		data.remote = rptSync.getRemoteOrg(cancelledfaas)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, cancelledfaas)
 	}
 
-	@ProxyMethod
-	public void scheduleSubmitToProvince(cancelledfaas){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(cancelledfaas)
-        def idx = 1
-        syncSvc.schedule(cancelledfaas.objid, cancelledfaas.objid, 'cancelledfaas', 'CANCELLEDFAAS-FORAPPROVAL', dtfiled, idx, remoteOrg)
-        scheduleSharedData(cancelledfaas, dtfiled, remoteOrg, idx)
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+
+
+	
+	def scheduleManualApproved = {syncdata, cancelledfaas ->
+		createSyncItem(cancelledfaas, syncdata, 'CANCELLEDFAAS-MANUAL-APPROVED')
+        scheduleSharedData(syncdata, cancelledfaas)
+	}
+
+	def scheduleSubmitToProvince = {syncdata, cancelledfaas ->
+		createSyncItem(cancelledfaas, syncdata, 'CANCELLEDFAAS-FORAPPROVAL')
+        scheduleSharedData(syncdata, cancelledfaas)
 	}	
 
-	@ProxyMethod
-	public void scheduleOnlineApproved(cancelledfaas){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(cancelledfaas)
-        syncSvc.schedule(cancelledfaas.objid, cancelledfaas.objid, 'cancelledfaas', 'CANCELLEDFAAS-ONLINE-APPROVED', dtfiled, 1, remoteOrg)
+	def scheduleOnlineApproved = {syncdata, cancelledfaas ->
+		createSyncItem(cancelledfaas, syncdata, 'CANCELLEDFAAS-ONLINE-APPROVED')
 	}	
 
-	void scheduleSharedData(cancelledfaas, dtfiled, remoteOrg, idx) {
-    	rptSync.scheduleExaminations(cancelledfaas.objid, 'cancelledfaas', dtfiled, remoteOrg, idx)
-    	rptSync.scheduleRequirements(cancelledfaas.objid, 'cancelledfaas', dtfiled, remoteOrg, idx)
+	void scheduleSharedData(syncdata, cancelledfaas) {
+		rptSync.scheduleExaminations(syncdata, cancelledfaas.objid)
+    	rptSync.scheduleRequirements(syncdata, cancelledfaas.objid)
     }	
 
 	
@@ -85,27 +111,21 @@ class CancelledFAASSyncService
 		rptSync.receive(syncdata, getActions())
 	}
 
-	def getActions(){
-		return  [
-	    	'CANCELLEDFAAS-MANUAL-APPROVED': [send: getData, receive: saveApprovedData],
-	    	'CANCELLEDFAAS-FORAPPROVAL': [send: getData, receive: saveDataForApproval],
-	    	'CANCELLEDFAAS-ONLINE-APPROVED': [send: getData, receive: postOnlineApproval],
-	    ]
-	}
-
 	/*---------------------------------------------------------
 	* SUPPORT METHODS
 	---------------------------------------------------------*/
-	def getData = {cancelledfaas ->
+	def getData = {syncdata ->
+		def cancelledfaas = [objid: syncdata.refid]
 		cancelledfaas.putAll(svc.open(cancelledfaas))
 
-		cancelledfaas.tasks = em_task.where('refid = :objid and enddate is not null', cancelledfaas)
+		cancelledfaas.tasks = em_task.where("refid = :objid AND enddate is not null AND state not like 'assign%'", cancelledfaas)
 										.orderBy('startdate').list()
 
 		cancelledfaas.signatory = em_signatory.read(cancelledfaas)
 
-		if (!cancelledfaas.signatory) 
+		if (!cancelledfaas.signatory) {
 			cancelledfaas.signatory = [:]
+		}
 
 		return cancelledfaas 
 	}

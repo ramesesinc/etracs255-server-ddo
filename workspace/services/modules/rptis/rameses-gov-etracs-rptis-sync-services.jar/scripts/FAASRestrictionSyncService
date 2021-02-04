@@ -29,39 +29,50 @@ class FAASRestrictionSyncService
     def em_ledger
 
 
+	def getActions(){
+		return  [
+	    	'FAASRESTRICTION-POST': [send: getRestriction, receive: postRemoteData, schedule: scheduleRestriction],
+	    	'FAASRESTRICTION-DELETE': [send: getRestriction, receive: postRemoteDelete, schedule: scheduleRestriction],
+	    	'FAASRESTRICTION-CANCEL': [send: getRestriction, receive: postRemoteCancel, schedule: scheduleRestriction],
+	    	'FAASRESTRICTION-REACTIVATE': [send: getRestriction, receive: postRemoteReactivate, schedule: scheduleRestriction],
+	    ]
+	}
+
 
 	/*---------------------------------------------------------
 	*
 	* SCHEDULING SYNC SUPPORT 
 	*
 	---------------------------------------------------------*/
-
 	@ProxyMethod
-	public void schedulePostRestriction(restriction){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(restriction)
-        syncSvc.schedule(restriction.objid, restriction.objid, 'faasrestriction', 'FAAS-RESTRICTION-POST', dtfiled, 1, remoteOrg)
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def restriction = em_restriction.read([objid: data.objid])
+		restriction.lguid = restriction.parent.lguid
+		data.remote = rptSync.getRemoteOrg(restriction)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, restriction)
 	}
 
-	@ProxyMethod
-	public void scheduleDeleteRestriction(restriction){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(restriction)
-        syncSvc.schedule(restriction.objid, restriction.objid, 'faasrestriction', 'FAAS-RESTRICTION-DELETE', dtfiled, 1, remoteOrg)
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
 	}
 
-	@ProxyMethod
-	public void scheduleCancelRestriction(restriction){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(restriction)
-        syncSvc.schedule(restriction.objid, restriction.objid, 'faasrestriction', 'FAAS-RESTRICTION-CANCEL', dtfiled, 1, remoteOrg)
-	}
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}	
 
-	@ProxyMethod
-	public void scheduleReactivate(restriction){
-		def dtfiled = dtSvc.serverDate
-        def remoteOrg = rptSync.getRemoteOrg(restriction)
-        syncSvc.schedule(restriction.objid, restriction.objid, 'faasrestriction', 'FAAS-RESTRICTION-REACTIVATE', dtfiled, 1, remoteOrg)
+	def scheduleRestriction = {syncdata, restriction ->
+		createSyncItem(restriction, syncdata, null)
 	}
 
 	
@@ -80,22 +91,15 @@ class FAASRestrictionSyncService
 		rptSync.receive(syncdata, getActions())
 	}
 
-	def getActions(){
-		return  [
-	    	'FAAS-RESTRICTION-POST': [send: getRestriction, receive: postRemoteData],
-	    	'FAAS-RESTRICTION-DELETE': [send: getRestriction, receive: postRemoteDelete],
-	    	'FAAS-RESTRICTION-CANCEL': [send: getRestriction, receive: postRemoteCancel],
-	    	'FAAS-RESTRICTION-REACTIVATE': [send: getRestriction, receive: postRemoteReactivate],
-	    ]
-	}
+
 
 	/*---------------------------------------------------------
 	*
 	* SUPPORT METHODS
 	*
 	---------------------------------------------------------*/
-	def getRestriction = {restriction ->
-		return em_restriction.read(restriction)
+	def getRestriction = {syncdata ->
+		return em_restriction.read([objid: syncdata.refid])
 	}
 
 	def postRemoteData = {syncdata ->
