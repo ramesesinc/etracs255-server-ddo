@@ -1,0 +1,10 @@
+._.*
+._.DS_Store
+.DS_Store
+.osiris_pid
+.shutdown_pid
+*.lnk
+_custom
+Thumbs.db
+/client
+/bin/env.conf

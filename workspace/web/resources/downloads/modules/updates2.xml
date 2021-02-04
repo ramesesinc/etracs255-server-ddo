@@ -1,0 +1,90 @@
+<app>
+<env>
+app.title=ETRACS 2.5 build 05 20200909 (PROVINCE OF DAVAO DE ORO)
+app.host=192.168.9.10:8071
+app.cluster=osiris3
+app.context=etracs25
+app.help=http://192.168.9.10:8080/help
+app.loader=com.rameses.osiris2.client.OsirisAppLoader
+readTimeout=300000
+connectionTimeout=5000
+
+filemgmt.enabled=false
+
+ws.host=192.168.9.10:8060
+#res.host=localhost
+
+socketio.host=192.168.9.10:7080
+
+entity.app.host=192.168.9.10:8071
+entity.app.context=etracs25
+</env>
+<modules>
+	<!-- custom -->
+	<module version="1.00" file="custom/gov-lgu-ddo-main.jar" />
+
+	<!-- core -->
+	<module version="2.51" file="core/osiris2-client-themes.jar" />
+	<module version="2.51" file="core/osiris2-client-ui.jar" />
+	<module version="2.51" file="core/osiris2-draw.jar" />
+	<module version="2.51" file="core/osiris2-framework.jar" />
+	<module version="2.51" file="core/osiris2-report.jar" />
+	<module version="2.52" file="core/rameses-client-ui.jar" />
+	<module version="2.51" file="core/rameses-client-ui-bio.jar" />
+	<module version="2.52" file="core/rameses-client-ui-jfx.jar" />
+	<module version="2.51" file="core/rameses-common2.jar"  />
+	<module version="2.51" file="core/rameses-custom-impl.jar"  />
+	<module version="2.51" file="core/rameses-jdbc16.jar"  />
+	<module version="2.52" file="core/rameses-seti.jar"  />
+	<module version="2.51" file="core/rameses-client-notification-socketio.jar" />
+ 
+	<!-- shared -->
+	<module version="2.51" file="shared/client-system.jar" />
+	<module version="2.52" file="shared/client-ui-extended.jar" />
+	<module version="2.52" file="shared/rameses-client-menu.jar" />
+	<module version="2.51" file="shared/rameses-client-report.jar" />
+	<module version="2.51" file="shared/rameses-rules-mgmt.jar" />
+	<module version="2.51" file="shared/rameses-workflow-mgmt.jar" />
+	<module version="2.51" file="shared/rameses-enterprise.jar" />
+	<module version="2.52" file="shared/rameses-enterprise-admin.jar" />
+	<module version="2.52" file="shared/rameses-enterprise-financial.jar" />
+	<module version="2.51" file="shared/rameses-client-notification2.jar" }/>
+ 
+	<!-- etracs -->
+	<module version="2.51" file="etracs/rameses-etracs-main.jar" /> 
+	<module version="2.51" file="etracs/rameses-gov-etracs-ngas-report.jar" /> 
+	<module version="2.51" file="etracs/rameses-gov-etracs-sre-report.jar" /> 
+	<module version="2.51" file="etracs/rameses-gov-etracs-tools.jar" /> 
+	<module version="2.51" file="etracs/rameses-gov-etracs-signatory-template.jar" /> 
+	<module version="2.51" file="etracs/rameses-gov-lgu.jar" /> 
+	<module version="2.51" file="etracs/rameses-gov-lgu-treasury.jar" /> 
+
+	<!-- entity -->
+	<module version="2.51" file="entity/rameses-enterprise-entity.jar" />
+	<module version="2.51" file="entity/rameses-enterprise-entity-tool.jar" />
+	<module version="2.51" file="entity/rameses-gov-etracs-entity.jar" />
+
+	<!-- treasury -->
+	<module version="2.51" file="treasury/rameses-treasury-common.jar" />
+	<module version="2.51" file="treasury/rameses-gov-depositslip.jar" />
+	<module version="2.51" file="treasury/rameses-gov-treasury.jar" />
+	<module version="2.51" file="treasury/rameses-gov-treasury-report.jar" />
+	<module version="2.51" file="treasury/rameses-gov-treasury-tool.jar" />
+
+	<!-- epayment -->
+	<module version="2.51" file="epayment/rameses-gov-epayment.jar" /> 
+	<module version="2.51" file="epayment/rameses-gov-epayment-report.jar" /> 
+
+	<!-- rptis -->
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-landtax.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-landtax-report.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-report.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-transmittal.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-province.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-landtax-province.jar" />
+	
+	<!-- queue -->
+	<module version="2.51" file="queue/rameses-queueing.jar" />
+</modules>
+</app>
