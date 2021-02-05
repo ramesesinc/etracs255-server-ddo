@@ -64,7 +64,6 @@ class RPTSyncDataInterceptor
     public void receiveRequirement(evt){
         def syncdata = evt.args[0]
         def requirement = syncdata.data 
-        println 'RPT-REQUIREMENT => ' + requirement
         reqSvc.save(requirement)
     }
 

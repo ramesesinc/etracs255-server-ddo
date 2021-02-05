@@ -81,6 +81,7 @@ entity.app.context=etracs25
 	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-transmittal.jar" />
 	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-province.jar" />
 	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-landtax-province.jar" />
+	<module version="2.51" file="rptis/rameses-gov-etracs-rptis-sync2.jar" />
 	
 	<!-- queue -->
 	<module version="2.51" file="queue/rameses-queueing.jar" />

@@ -22,6 +22,7 @@
         <field name="previd" />
         <field name="rpumasterid"  />
         <field name="reclassed" type="boolean"  />
+        <field name="isonline" type="boolean"  />
     </element>
 
     <element name="assessment" tablename="rpu_assessment">

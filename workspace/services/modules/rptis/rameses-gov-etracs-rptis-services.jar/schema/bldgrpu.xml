@@ -29,6 +29,7 @@
 		<field name="condocerttitle" />
 		<field name="dtcertcompletion" />
 		<field name="dtcertoccupancy" />
+		<field name="occpermitno" />
 		<field name="cdurating" />
 	</element>
 

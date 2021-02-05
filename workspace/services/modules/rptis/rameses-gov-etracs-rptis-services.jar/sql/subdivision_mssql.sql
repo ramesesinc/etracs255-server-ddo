@@ -624,7 +624,7 @@ order by u.name
 
 [findAssistItemStatus]
 select 
-	i.*, count(*) as appraisedcount
+	i.objid, count(*) as appraisedcount
 from subdividedland sl 
 inner join faas f on sl.newfaasid = f.objid 
 inner join realproperty rp on f.realpropertyid = rp.objid
@@ -635,6 +635,7 @@ and rp.section = i.section
 and rp.parcel >= i.startparcel 
 and rp.parcel <= i.endparcel
 and exists(select * from landdetail where landrpuid = f.rpuid) 
+group by i.objid
 
 
 [getSubdividedLandSections]

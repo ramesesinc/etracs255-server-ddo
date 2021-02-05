@@ -160,6 +160,7 @@ class RPTSyncDataService
 			]
         	syncSvc.createItem(syncdata, item)
             scheduleImages(syncdata, exam.objid)
+            scheduleImagesByRefId(syncdata, exam.objid)
         }
 	}
 
@@ -175,6 +176,7 @@ class RPTSyncDataService
 			]
         	syncSvc.createItem(syncdata, item)
             scheduleImages(syncdata, req.objid)
+			scheduleImagesByRefId(syncdata, req.objid)
         }
 	}
 

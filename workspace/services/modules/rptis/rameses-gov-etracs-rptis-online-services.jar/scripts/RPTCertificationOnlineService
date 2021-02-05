@@ -9,6 +9,9 @@ class RPTCertificationOnlineService {
 	@Service('Var')
 	def var
 
+	@Service('RPTUtil')
+	def util
+
 	@Service('EntityService')
 	def entitySvc
 
@@ -17,6 +20,9 @@ class RPTCertificationOnlineService {
 
 	@Service('LandTaxReportTaxClearanceService')
 	def clearanceSvc
+
+	@Service('RPTAssessmentNoticeService')
+	def noaSvc
 
 	@Service('ReportParameterService')
 	def reportSvc
@@ -29,6 +35,12 @@ class RPTCertificationOnlineService {
 
 	@DataContext('rptcertification_online')
 	def em_cert_online
+
+	@DataContext('assessmentnotice')
+	def em_noa
+
+	@DataContext('assessmentnotice_online')
+	def em_noa_online
 
 	@DataContext('rptledger')
 	def em_ledger
@@ -59,15 +71,73 @@ class RPTCertificationOnlineService {
 			return onlineCert
 		} else {
 			def cert = initTaxClearance(params)
-			def entity = entitySvc.open([objid: params.entityid])
+			def entity = entitySvc.open([objid: cert.entityid])
 			entity.address = entity.address.text
 			cert.taxpayer = entity
-			cert.requestedby = entity.name
-			cert.requestedbyaddress = entity.address
-			cert.reporttype = [name: 'fullypaid']
+			cert.requestedby = params.requestedby?.name ? params.requestedby.name :  entity.name
+			cert.requestedbyaddress = params.requestedby?.address ? params.requestedby.name :  entity.address
 			clearanceSvc.createClearance(cert)
 			return createOnlineCertification(cert, params)
 		}
+	}
+
+	@ProxyMethod
+	public def issueNOA(params) {
+		def onlineNoa = getOnlineNoa(params) 
+		if (onlineNoa) {
+			return onlineNoa
+		} else {
+			if (!params.faases) params.faases = [params.faas]
+			def noa = initNoa(params)
+			noaSvc.create(noa)
+			return createOnlineNoa(noa, params)
+		}
+	}
+
+	def validDocTypes = ['tdtruecopy', 'rptnoa', 'rpttaxclearance'];
+
+	def generateTrueCopy = {params ->
+		def result = [];
+		params.faases.each{ faas -> 
+			params.faas = faas;
+			result << issueTrueCopy(params);
+		}
+		return result;
+	}
+
+	def generateNOA = {params ->
+		return issueNOA(params);
+	}
+
+	def generateTaxClearance = {params ->
+		return issueTaxClearance(params);
+	}
+
+	def doctypeHandlers = [
+		tdtruecopy: generateTrueCopy,
+		rptnoa: generateNOA,
+		rpttaxclearance: generateTaxClearance,
+	]
+
+	@ProxyMethod
+	public def generateDocs(params) {
+		if (!params.faases) throw new Exception("faases must be specified");
+		def doctypes = params.remove("doctypes");
+		if (!doctypes) doctypes = validDocTypes;
+
+		def faases = params.remove("faases");
+		def result = [:]
+		
+		doctypes.each{doctype ->
+			def p = [:];
+			p.putAll(params);
+			p.faases = faases;
+			def handler = doctypeHandlers[doctype];
+			if (!handler) throw new Exception('Handler not defined for doctype ' + doctype);
+			result[doctype] = handler(p);
+		}
+
+		return result;
 	}
 
 	@ProxyMethod
@@ -79,13 +149,13 @@ class RPTCertificationOnlineService {
 		cert.state = 'PAID'
 		em_cert.update(cert)
 		em_cert_online.update(cert)
+		em_noa_online.update(cert)
 	}
 
 	@ProxyMethod
 	public def open(cert) {
 		return em_cert_online.read(cert)
 	}
-
 
 	def createOnlineCertification(cert, params) {
 		def onlineCert = [
@@ -101,19 +171,19 @@ class RPTCertificationOnlineService {
 		return onlineCert
 	}
 
-
 	def initTrueCopy(params) {
-		required('entityid', params.entityid);
 		required('faas', params.faas);
 		required('faas.objid', params.faas.objid);
-		required('faas.tdno', params.faas.tdno);
+		params.faas = em_faas.find([objid: params.faas.objid]).first();
+		if (!params.faas) throw new Exception("FAAS does not exist or has alrady been deleted.");
+		params.entityid = params.faas.taxpayer.objid;
 		required('refid', params.refid);
 		required('reftype', params.reftype);
 		required('refno', params.refno);
 		required('refdate', params.refdate);
 		required('purpose', params.purpose);
 
-		validatedFaas(params.faas);
+		validateFaas(params.faas);
 
 		params.certid = 'RC' + new java.rmi.server.UID()
 		params.faases = []
@@ -155,7 +225,6 @@ class RPTCertificationOnlineService {
 	}
 
 	def initTaxClearance(params) {
-		required('entityid', params.entityid);
 		required('faases', params.faases);
 		required('refid', params.refid);
 		required('reftype', params.reftype);
@@ -166,75 +235,142 @@ class RPTCertificationOnlineService {
 		def year = dtSvc.getServerYear()
 		params.certid = 'RC' + new java.rmi.server.UID()
 
+		def reporttype = null;
+
 		params.faases.each {
-			validatedFaas(it)
-			def ledger = em_ledger.select('lastyearpaid, lastqtrpaid').find([faasid: it.objid]).first()
+			validateFaas(it)
+			def ledger = em_ledger.select('lastyearpaid,lastqtrpaid,taxable,totalav,txntype.objid').find([faasid: it.objid]).first()
 			if (ledger) {
 				it.rptcertificationid = params.certid 
 				it.refid = it.objid
 				it.putAll(ledger)
+
+				if (!util.isTrue(ledger.taxable)) {
+					reporttype = [name: 'exempt', title: 'EXEMPT']
+				} else if (ledger.totalav == 0) {
+					reporttype = [name: 'zerovalue', title: 'ZERO VALUE']
+				} else if (ledger.txntype.objid == 'ND') {
+					reporttype = [name: 'newdiscovery', title: 'NEW EFFECTIVE']
+				} else {
+					reporttype = [name:"fullypaid", title:"FULL PAYMENT"]
+				}
 			}
 		}
 
-		def reportParams = reportSvc.getStandardParameter()
-
-		def certifiedby = reportParams.TREASURERNAME
-		def certifiedbytitle = reportParams.TREASURERTITLE
-
-		if (!certifiedby) {
-			certifiedby = var.LANDTAXCERTIFIEDBY
-			certifiedbytitle = var.LANDTAXCERTIFIEDBYTITLE
-		}
-
-		if (!certifiedby) {
-			certifiedby = 'SYSTEM'
-			certifiedbytitle = 'SYSTEM'
-		}
-
+		def treasurer = getTreasurer()
+		def certifiedby = treasurer ? treasurer.name : "SYSTEM"
+		def certifiedbytitle = treasurer ? treasurer.title : "SYSTEM"
+		
 		return [
 			objid            : params.certid,
         	opener           : 'rpttaxclearance',
-        	certifiedby      : 'SYSTEM',
-        	certifiedbytitle : 'SYSTEM',
+        	certifiedby      : certifiedby,
+        	certifiedbytitle : certifiedbytitle,
         	purpose          : params.purpose,
 			asofyear         : year,
 			year 			 : year,
-			qtr 			 : 4,
+			qtr 			 : params.faases ? params.faases[0].lastqtrpaid : 4,
 			items 			 : params.faases,
         	oramount         : 0.0,
         	stampamount      : 0.0,
         	office           : 'landtax',
         	official         : false,
         	_online 		 : true,
-        	properties 		 : [reporttype:[name:"fullypaid",title:"FULL PAYMENT"]],
+        	reporttype		 : reporttype,
+        	properties 		 : [reporttype: reporttype],
+			entityid 		 : params.faases[0].taxpayer.objid,
 		]
 	}
+
+	def initNoa(params) {
+		required('faases', params.faases)
+		params.faases.each{ faas ->
+			validateFaas(faas)
+		}
+
+		def noa = [objid: 'NOA' + new java.rmi.server.UID()]
+		noa.taxpayer = params.faases[0].taxpayer
+		noa._online = true
+		noa.items = []
+		params.faases.each{ faas ->
+			noa.items << [
+				faasid: faas.objid,
+				faas: faas,
+				effectivityyear: faas.effectivityyear,
+			]
+		}
+		return noa
+	}
+
+	def createOnlineNoa(noa, params) {
+		def onlineNoa = [
+			objid : noa.objid,
+			state : 'FORPAYMENT',
+			txnno : noa.txnno,
+			reftype: params.reftype,
+			refid: params.refid,
+			refno: params.refno,
+			refdate: params.refdate
+		]
+		em_noa_online.create(onlineNoa)
+		return onlineNoa
+	}	
 
 	void required(caption, value) {
 		if (!value) throw new Exception(caption + ' must be specified');
 	}
 
-	void validatedFaas(entity) {
-		def faas = em_faas.select('objid,state').find([objid: entity.objid]).first()
+	void validateFaas(entity) {
+		def fields = 'objid,state,effectivityyear,taxpayer.objid,taxpayer.name,taxpayer.address.text,administrator.name,administrator.address'
+		def faas = em_faas.select(fields).find([objid: entity.objid]).first()
 		if (!faas) {
 			//resolve faas by tdno
-			faas = em_faas.select('objid,state').find([tdno: entity.objid]).first()
+			faas = em_faas.select(fields).find([tdno: entity.objid]).first()
 			if (faas) {
 				entity.objid = faas.objid
+				entity.faas = faas
 			}
 		}
 		if (!faas) throw new Exception('FAAS ' + entity.tdno + ' does not exist or has been deleted.')
 		if (faas.state.matches('INTERIM|PENDING')) throw new Exception('FAAS ' + entity.tdno + ' is not yet approved.')
+		entity.putAll(faas)
 	}
 
 	def getOnlineCert(params, certtype) {
 		def onlineCert = em_cert_online.find([refid: params.refid]).first()
 		if (onlineCert) {
 			def mainCert = em_cert.select('opener').find([objid: onlineCert.objid]).first()
-			if (mainCert.opener == certtype) {
+			if (mainCert?.opener == certtype) {
 				return onlineCert
 			}
 		} 
 		return null
+	}
+
+	def getOnlineNoa(params) {
+		def onlineNoa = em_noa_online.find([refid: params.refid]).first()
+		if (onlineNoa) {
+			return onlineNoa
+		} 
+		return null
+	}
+
+
+	
+	@DataContext("city")
+	def em_city
+
+	@DataContext("municipality")
+	def em_muni
+
+	@DataContext("province")
+	def em_prov
+
+	@ProxyMethod
+	public def getTreasurer() {
+		def lgu = em_city.select("treasurer.*").where("1=1").first();
+		if (!lgu) lgu = em_prov.select("treasurer.*").where("1=1").first();
+		if (!lgu) lgu = em_muni.select("treasurer.*").where("1=1").first();
+		return lgu?.treasurer;
 	}
 }
