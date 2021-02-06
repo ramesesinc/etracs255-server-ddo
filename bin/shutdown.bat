@@ -25,3 +25,4 @@ if [%1] == [] goto end
 
 "%JAVA%" "%JAVA_OPT%" -cp lib/*;. com.rameses.server.Shutdown %ARGS%
 pause
+

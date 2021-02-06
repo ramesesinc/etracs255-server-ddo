@@ -21,3 +21,4 @@ fi
 
 $JAVA $JAVA_OPTS -classpath lib/*:. com.rameses.server.Shutdown
 
+
