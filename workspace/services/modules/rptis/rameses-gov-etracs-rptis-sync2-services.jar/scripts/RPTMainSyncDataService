@@ -39,8 +39,6 @@ class RPTMainSyncDataService {
 
 	@ProxyMethod
 	public def createDataForSync(data) {
-		if (!isNewSycnData(data)) return;
-		
 		data.createdby = [objid: env.USERID, name: env.USER, title: env.JOBTITLE]
 		data.dtfiled = dtSvc.serverDate
 		em_forsync.create(data)
