@@ -113,9 +113,11 @@ class FAASSyncDataService
 	def scheduleOnlineApprovedFAAS = {syncdata, faas ->
         def item = null
         if (checkTransactionIsLocal(faas)){
+			println 'scheduleOnlineApprovedFAAS => FAAS-REMOTE-TXN'
         	createSyncItem(faas, syncdata, 'FAAS-REMOTE-TXN')
         	scheduleSharedData(syncdata, faas)
         } else {
+			println 'scheduleOnlineApprovedFAAS => FAAS-REMOTE-APPROVAL'
         	createSyncItem(faas, syncdata, 'FAAS-REMOTE-APPROVAL')
         }
 	}
@@ -171,6 +173,7 @@ class FAASSyncDataService
 
     def checkTransactionIsLocal(faas) {
         def rootOrg = rptSync.getRootOrg()
+		println 'rootOrg => ' + rootOrg
         return faas.originlguid == rootOrg.objid
     }
 
